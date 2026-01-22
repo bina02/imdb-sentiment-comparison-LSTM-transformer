@@ -1,8 +1,24 @@
 # 🚀 Performance Comparison: LSTM vs. Transformer on IMDB Dataset
 
-> This project compares the performance of **RNN, LSTM, and Transformer** models for sentiment classification, specifically analyzing the impact of model depth and architectural robustness.
+> This project conducts a comprehensive comparative analysis of **RNN, LSTM, and Transformer** models for sentiment classification. It explores the impact of model depth, architectural robustness, and the relationship between evaluation metrics.
 
-## 📌 1. Key Performance Metrics
+---
+
+## 📌 1. Experimental Environment & Hyperparameters
+
+To ensure a fair comparison, all models were trained under a unified global configuration with specific adjustments made in later phases to optimize performance.
+
+### **Common Configuration**
+* **Max Sequence Length**: 512
+* **Embedding Dimension**: 128
+* **Hidden Size (RNN/LSTM)**: 128
+* **Transformer d_model**: 128
+* **Transformer d_ff (Feed-forward)**: 512
+* **Number of Heads**: 8
+* **Dropout Rate**: 0.3 (Applied from Phase 2)
+* **Tokenizer**: SentencePiece (Subword Tokenization)
+
+### **Integrated Performance Metrics**
 
 | Phase | Model | Layer | Train Acc | Test Acc | Test ROC AUC |
 | :--- | :--- | :---: | :---: | :---: | :---: |
@@ -14,55 +30,52 @@
 | | **Transformer**| 2 | 0.9193 | 0.8582 | 0.9355 |
 | **Phase 3** | RNN | 4 | 0.5009 | 0.5043 | 0.5053 |
 | (Deep) | LSTM | 4 | 0.6033 | 0.5715 | 0.6143 |
-| | **Transformer(lr:0.0001)**| **6** | **0.9138** | **0.8481** | **0.9373** |
+| | **Transformer**| **6** | **0.9138** | **0.8481** | **0.9373** |
 
-## 🛠 2. Tech Stack
-* **Framework**: PyTorch
-* **Tokenizer**: SentencePiece (Subword Tokenization)
-* **Library**: Scikit-learn (Metrics), Matplotlib (Visualization)
-* **Optimization**: Adam Optimizer (LR 1e-4), Dropout (0.3)
+---
 
-## 📊 3. Data & Model Architecture
-* **Dataset**: IMDB Movie Reviews (Binary Sentiment Classification)
-* **Model Structures**: 
-  - **Simple RNN**: Vanilla Recurrent Neural Network.
-  - **LSTM**: Long Short-Term Memory capturing long-term dependencies.
-  - **Transformer**: Encoder-only architecture focusing on Self-Attention.
+## 📊 2. Model Architecture
+Based on the implementation in `models.ipynb`, the following architectures were utilized:
 
-## 📉 4. Analysis
-
-###  Beyond Accuracy: The Power of ROC AUC
-Accuracy can be misleading on sensitive thresholds. **ROC AUC** proves the models' underlying discriminative power. Phase 2 results show both LSTM and Transformer achieving AUC > 0.93, indicating superior ability to distinguish sentiment.
+* **Simple RNN**: Uses the hidden state of the final time step (`h[-1]`) for classification.
+* **LSTM**: Captures long-term dependencies using gated mechanisms and utilizes `pack_padded_sequence` for efficient variable-length sequence processing.
+* **Transformer (Encoder-only)**: Features custom `MultiHeadAttention` and `EncoderLayer`.
+    * **Positional Encoding**: Sinusoidal encoding is applied to provide sequence order information.
+    * **Global Average Pooling**: Instead of a [CLS] token, the output is averaged (`x.mean(dim=1)`) across the sequence length before the final linear classifier.
 
 
-###  LSTM: Peak Performance in Shallow Layers
-LSTM hit **99.8% Training Accuracy** in Phase 1, showing exceptional memorization. The **2-Layer LSTM** achieved the best test score (0.8798), making it the optimal structure for this data scale.
 
-###  Transformer: Structural Stability in Deep Nets
-In Phase 3, RNN/LSTM suffered from **Model Collapse** (Acc 0.50~0.57). However, the **Transformer (6-Layers)** maintained a high ROC AUC of 0.9373, highlighting the effectiveness of **Residual Connections**.
+---
+
+## 📈 3. Analysis of Experimental Phases
+
+### **Phase 1: Baseline (1 Layer, LR=0.001)**
+Initially, I expected the Transformer to show superior performance due to its attention mechanism. However, **LSTM unexpectedly delivered the best results**. I observed a significant gap between Train and Test performance in all models, suggesting a high degree of overfitting. I hypothesized that shallow models (1-layer) might lack sufficient context understanding for complex sentiment.
+
+### **Phase 2: Optimization (2 Layers, Transformer LR=0.0001, Dropout=0.3)**
+To improve sentence comprehension, I increased the depth to 2 layers and added a 0.3 dropout rate. I specifically lowered the **Transformer's learning rate to 0.0001** to prevent divergence and ensure stable convergence.
+* **Result**: LSTM achieved the project's highest score (**Test Acc 0.8798 / ROC AUC 0.9498**).
+* **Insight**: Simple RNN's performance began to decline. This indicates that even at 2 layers, vanilla RNNs start suffering from the **Vanishing Gradient** problem.
+
+### **Phase 3: Deep Architecture Stability (RNN/LSTM=4 layers, Transformer=6 layers)**
+I pushed the limits of each architecture to test stability in deep configurations.
+* **Result**: RNN and LSTM performance **collapsed** (Accuracy ~0.50), indicating they failed to learn as depth increased.
+* **Insight**: The **Transformer remained remarkably stable** even with 6 layers, maintaining an ROC AUC of 0.9373. This is a direct result of the **Add & Norm (Residual Connections)** and Layer Normalization implemented in the `EncoderLayer`, which mitigates vanishing gradients.
+* **Conclusion**: Despite the Transformer's stability, it did not surpass the 2-layer LSTM. This suggests that for the IMDB dataset, context captured within a `max_len=512` window may be more efficiently processed by an optimized LSTM than a deep Transformer.
 
 
-## ⚠️ 5. Failed Attempts & Troubleshooting
 
-* **Vanishing Gradient in Deep RNNs**: 
-    Initially, I attempted to improve performance by simply adding more layers to the RNN and LSTM (Phase 3). However, this led to a massive drop in accuracy (~50%). I realized that without residual connections, gradients vanish in deeper recurrent layers, making them unable to learn even the training data.
-* **Initial Overfitting of LSTM**: 
-    The 1-Layer LSTM showed a Train Acc of 99.8% but a lower Test Acc. I tried increasing Dropout and reducing the Learning Rate in Phase 2, which successfully narrowed the gap and improved generalization.
-* **Transformer Tuning**: 
-    The Transformer was sensitive to the Learning Rate. Setting it too high caused the loss to diverge, which taught me the importance of a stable LR (1e-4) for attention-based models.
+---
 
-## 🧠 6. Lessons Learned
+## 🧠 4. Challenges & Lessons Learned
 
-1.  **"Deeper" is not always "Better"**: Adding complexity without structural support (like Skip Connections) can destroy a model's ability to converge.
-2.  **Metrics Matter**: Relying only on Accuracy can be dangerous. Comparing it with ROC AUC helped me identify whether a model was actually learning or just guessing.
-3.  **Architectural Strengths**: I learned firsthand why Transformers dominate the industry today—their ability to scale without collapsing is their greatest strength.
+* **Hardware Constraints**: GPU memory limits forced a cap on `max_len` at 512. This likely limited the Transformer's ability to utilize long-range global dependencies which is its primary strength.
+* **Hyperparameter Sensitivity**: The Transformer was extremely sensitive to the learning rate. Finding the balance between 0.001 and 0.0001 was crucial for performance.
+* **The "Depth Ceiling"**: I confirmed that recurrent models have a clear structural ceiling. Without residual connections, adding layers to an LSTM/RNN eventually leads to total learning failure.
 
-## 🏁 7. Conclusion
-* **Optimal Model**: **2-Layer LSTM** is the most efficient choice for IMDB-sized data.
-* **Robustness**: **Transformer** is the most stable as it scales deeper.
-* **Key Takeaway**: Recurrent models have a clear "depth ceiling," while Transformers excel in deep learning tasks.
+---
 
-## 🏃 8. Getting Started
+## 🏃 5. Getting Started
 
 1. **Clone the repository**:
    ```bash
