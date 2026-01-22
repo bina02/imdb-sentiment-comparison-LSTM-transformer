@@ -13,17 +13,21 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
 
 class IMDBRNN(nn.Module):
-  def __init__(self, input_size, embed_dim, hidden_size, padding_idx):
+  def __init__(self, input_size, embed_dim, hidden_size, num_layers, padding_idx, dropout):
     super().__init__()
     self.embedding = nn.Embedding(input_size, embed_dim, padding_idx=padding_idx)
-    self.rnn = nn.RNN(embed_dim, hidden_size=hidden_size, num_layers=1, batch_first=True)
+    self.rnn = nn.RNN(embed_dim, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
     self.linear = nn.Linear(hidden_size, 1)
+    self.dropout = nn.Dropout(p=dropout)
+
 
   def forward(self, x, lengths):
     x = self.embedding(x) #(B, T, E)
+    x = self.dropout(x)
     packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False) #shuffle=True in train_set
     out, h = self.rnn(packed) # dimension of h => (1, B, H)
     h_n = h[-1] # h_n -> (B, H)
+    h_n = self.dropout(h_n)
     logits = self.linear(h_n).squeeze(-1) #(B, 1) -(squeeze(-1))-> (B,)
 
     return logits
@@ -31,17 +35,21 @@ class IMDBRNN(nn.Module):
 """#2. LSTM model"""
 
 class IMDBLSTM(nn.Module):
-  def __init__(self, input_size, embed_dim, hidden_size, padding_idx):
+  def __init__(self, input_size, embed_dim, hidden_size, num_layers, padding_idx, dropout):
     super().__init__()
     self.embedding = nn.Embedding(input_size, embed_dim, padding_idx=padding_idx)
-    self.lstm = nn.LSTM(embed_dim, hidden_size, num_layers=1, batch_first=True)
+    self.lstm = nn.LSTM(embed_dim, hidden_size, num_layers=num_layers, batch_first=True)
     self.linear = nn.Linear(hidden_size, 1)
+    self.dropout = nn.Dropout(p=dropout)
 
   def forward(self, x, lengths):
     x = self.embedding(x)
+    x = self.dropout(x)
+
     packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
     out, (h, c) = self.lstm(packed)
     h_n = h[-1]
+    h_n = self.dropout(h_n)
     logits = self.linear(h_n).squeeze(-1)
 
     return logits
@@ -122,15 +130,17 @@ class EncoderLayer(nn.Module):
 """Transformer Classifier"""
 
 class TransformerClassifier(nn.Module):
-  def __init__(self, vocab_size, d_model, num_heads, num_layers, d_ff, num_classes, max_len):
+  def __init__(self, vocab_size, d_model, num_heads, num_layers, d_ff, num_classes, max_len, dropout):
       super().__init__()
       self.embedding = nn.Embedding(vocab_size, d_model)
       self.pos_encoding = PositionalEncoding(d_model, max_len)
       self.layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff) for _ in range(num_layers)])
       self.classifier = nn.Linear(d_model, num_classes)
+      self.dropout = nn.Dropout(p=dropout)
 
   def forward(self, x, mask):
     x = self.embedding(x)
+    x = self.dropout(x)
     x = self.pos_encoding(x)
 
     for layer in self.layers:
@@ -138,4 +148,3 @@ class TransformerClassifier(nn.Module):
 
     x = x.mean(dim=1)
     return self.classifier(x)
-
